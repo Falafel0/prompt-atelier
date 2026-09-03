@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { formatPrompt, type PromptFormat, type PromptFormatOptions } from "./prompt";
-import { analyzePromptText } from "./promptAnalysis";
+import { analyzePromptText, type ArtistDirective } from "./promptAnalysis";
 import "./promptIde.css";
 import { useStore } from "./store";
 import {
@@ -109,7 +109,8 @@ export default function App() {
     recognized: Tag[];
     unknown: string[];
     weights: Record<string, number>;
-  }>({ sentences: [], recognized: [], unknown: [], weights: {} });
+    artistDirectives: ArtistDirective[];
+  }>({ sentences: [], recognized: [], unknown: [], weights: {}, artistDirectives: [] });
   const [toast, setToast] = useState("");
   const [packs, setPacks] = useState<
     (import("./types").PackManifest & { enabled: boolean })[]
@@ -1229,12 +1230,13 @@ export default function App() {
             <button className="library-close" onClick={() => setPromptOpen(false)}><X size={16} /></button>
             <header className="prompt-editor-header"><span><Clipboard color="#85b1ff" /><span><small>RAW PROMPT WORKSPACE</small><h2>Full prompt editor</h2></span></span><p>Paste or write a complete prompt. The catalog is never changed until you explicitly add recognized tags.</p></header>
             <label className="prompt-textarea-label"><span>Prompt text <small>{rawPromptStats.characters.toLocaleString()} characters · {rawPromptStats.tokens} tokens · {rawPromptStats.phrases} phrases</small></span><textarea autoFocus value={rawPrompt} placeholder="A girl with long hair, blue eyes, school_uniform..." onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); analyzeRawPrompt(); } }} onChange={(event) => setPromptText(event.target.value)} /></label>
-            <div className="form-actions prompt-actions"><button className="replace" disabled={!rawPrompt.trim()} onClick={analyzeRawPrompt}>Analyze · Ctrl+Enter</button><button disabled={!rawPrompt.trim()} onClick={copyRawPrompt}><Clipboard size={13} /> Copy text</button><button onClick={() => { resetPromptText(""); setPromptAnalysis({ sentences: [], recognized: [], unknown: [], weights: {} }); }}>Use generated prompt</button><button disabled={!promptAnalysis.recognized.length} onClick={addRecognizedPromptTags}>Add {promptAnalysis.recognized.length || ""} recognized tags</button></div>
-            {(promptAnalysis.sentences.length > 0 || promptAnalysis.recognized.length > 0 || promptAnalysis.unknown.length > 0) && (
+            <div className="form-actions prompt-actions"><button className="replace" disabled={!rawPrompt.trim()} onClick={analyzeRawPrompt}>Analyze · Ctrl+Enter</button><button disabled={!rawPrompt.trim()} onClick={copyRawPrompt}><Clipboard size={13} /> Copy text</button><button onClick={() => { resetPromptText(""); setPromptAnalysis({ sentences: [], recognized: [], unknown: [], weights: {}, artistDirectives: [] }); }}>Use generated prompt</button><button disabled={!promptAnalysis.recognized.length} onClick={addRecognizedPromptTags}>Add {promptAnalysis.recognized.length || ""} recognized tags</button></div>
+            {(promptAnalysis.sentences.length > 0 || promptAnalysis.recognized.length > 0 || promptAnalysis.unknown.length > 0 || promptAnalysis.artistDirectives.length > 0) && (
               <div className="prompt-analysis">
                 <section><h3>Sentences <span>{promptAnalysis.sentences.length}</span></h3><ol>{promptAnalysis.sentences.map((sentence, index) => <li key={`${sentence}-${index}`}>{sentence}</li>)}</ol></section>
                 <section><h3>Known canonical tags <span>{promptAnalysis.recognized.length}</span></h3><p className="analysis-help">Click one to toggle it in the character; use the button above to add all.</p><div className="analysis-tags">{promptAnalysis.recognized.map((tag) => <button key={tag.id} onClick={() => s.toggle(tag)}>{tag.name}</button>)}</div></section>
                 <section><h3>Unrecognized fragments <span>{promptAnalysis.unknown.length}</span></h3><p className="analysis-help">Kept intact in your text. They are never silently turned into catalog tags.</p><div className="analysis-tags muted">{promptAnalysis.unknown.map((fragment) => <span key={fragment}>{fragment}</span>)}</div></section>
+                <section><h3>Artist directives <span>{promptAnalysis.artistDirectives.length}</span></h3><p className="analysis-help">Preserved as artist/bot syntax; never added as ordinary catalog tags.</p><div className="analysis-tags artist-directives">{promptAnalysis.artistDirectives.map((directive) => <span key={directive.raw}>{directive.raw}</span>)}</div></section>
               </div>
             )}
           </section>

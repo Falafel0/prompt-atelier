@@ -1,7 +1,7 @@
 {
   "name": "anime-tag-prompt-builder",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.0",
   "atelierEdition": "owner",
   "githubReleaseRepo": "Falafel0/prompt-atelier",
   "description": "Windows-first anime prompt and tag builder.",
@@ -16,7 +16,7 @@
     "build:owner": "set \"PROMPT_ATELIER_EDITION=owner\"&& npm run build",
     "package:win": "npm run build && electron-builder --win --x64 --publish never",
     "package:win:public": "set \"PROMPT_ATELIER_EDITION=public\"&& npm run build && electron-builder --win --x64 --publish never --config.appId=com.promptatelier.public --config.directories.output=release/public --config.extraMetadata.atelierEdition=public --config.extraMetadata.githubReleaseRepo=Falafel0/prompt-atelier",
-    "package:win:owner": "set \"PROMPT_ATELIER_EDITION=owner\"&& npm run build && electron-builder --win --x64 --publish never --config.appId=com.promptatelier.owner --config.directories.output=release/owner --config.extraMetadata.atelierEdition=owner",
+    "package:win:owner": "set \"PROMPT_ATELIER_EDITION=owner\"&& npm run build && electron-builder --win --x64 --publish never --config.appId=com.promptatelier.owner --config.productName=PromptAtelierOwner --config.directories.output=release/owner --config.extraMetadata.atelierEdition=owner",
     "preview": "vite preview",
     "test": "vitest run"
   },

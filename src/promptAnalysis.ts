@@ -5,6 +5,38 @@ export interface PromptAnalysisResult {
   recognized: Tag[];
   unknown: string[];
   weights: Record<string, number>;
+  artistDirectives: ArtistDirective[];
+}
+
+export interface ArtistDirective {
+  raw: string;
+  artists: string[];
+  alias?: string;
+  weight?: number;
+  mode: "merge" | "artist" | "bot-list" | "bot-control";
+}
+
+const artistOperator = /@\[([^\]]+)\]|@([\p{L}\p{N}_-]+)(?:\s*\(([^)]*)\))?|#=@|#[^,;\n]+/gu;
+
+export function extractArtistDirectives(text: string): ArtistDirective[] {
+  const directives: ArtistDirective[] = [];
+  for (const match of text.matchAll(artistOperator)) {
+    const raw = match[0].trim();
+    if (raw === "#=@") { directives.push({ raw, artists: [], mode: "bot-control" }); continue; }
+    if (match[1] !== undefined) {
+      const parts = match[1].split("|").map((part) => part.trim()).filter(Boolean);
+      const last = parts.at(-1) ?? "";
+      const weighted = last.match(/^(.*?):\s*([0-9]+(?:\.[0-9]+)?)$/);
+      const artists = parts.map((part, index) => index === parts.length - 1 && weighted ? weighted[1].trim() : part).filter(Boolean);
+      if (artists.length) directives.push({ raw, artists, weight: weighted ? Number(weighted[2]) : undefined, mode: "merge" });
+    } else if (match[2]) {
+      directives.push({ raw, artists: [match[2]], alias: match[3]?.trim() || undefined, mode: "artist" });
+    } else if (raw.startsWith("#")) {
+      const value = raw.slice(1).replace(/\\([()])/g, "$1").trim();
+      if (value) directives.push({ raw, artists: [value], mode: "bot-list" });
+    }
+  }
+  return directives;
 }
 
 const cleanTerm = (value: string) =>
@@ -43,7 +75,11 @@ export function analyzePromptText(
     .sort((a, b) => b.term.length - a.term.length);
   const recognized = new Map<string, { tag: Tag; at: number; weight?: number }>();
   const unknown: string[] = [];
-  const fragments = rawPrompt.split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
+  const artistDirectives = extractArtistDirectives(rawPrompt);
+  // Artist and bot directives are preserved as text operators, not turned into
+  // catalog tags or false "unknown" diagnostics.
+  const catalogText = rawPrompt.replace(artistOperator, " ");
+  const fragments = catalogText.split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
 
   let promptOffset = 0;
   for (const fragment of fragments) {
@@ -69,5 +105,6 @@ export function analyzePromptText(
     recognized: [...recognized.values()].sort((a, b) => a.at - b.at).map((item) => item.tag),
     unknown: [...new Set(unknown)].slice(0, 24),
     weights: Object.fromEntries([...recognized.values()].filter((item) => item.weight !== undefined).map((item) => [item.tag.id, item.weight!])),
+    artistDirectives,
   };
 }
