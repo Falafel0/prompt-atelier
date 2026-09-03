@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
-const isOwnerEdition = require("../package.json").atelierEdition !== "public";
+// Sandboxed Electron preloads may only require Electron built-ins. The edition is
+// supplied by the trusted main process instead of requiring package.json here.
+const isOwnerEdition = !process.argv.includes("--atelier-edition=public");
 contextBridge.exposeInMainWorld("atelier", {
   copy: (value) => ipcRenderer.invoke("clipboard:write", value),
   bootstrap: (pack, tags, rels) =>

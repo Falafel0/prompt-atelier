@@ -35,6 +35,12 @@ function observeWindowLoad(window, label) {
   window.webContents.on("console-message", (_, level, message, line, sourceId) =>
     console.error(`[${label}] renderer console ${level} at ${sourceId}:${line}: ${message}`),
   );
+  window.webContents.once("did-finish-load", async () => {
+    try {
+      const bridge = await window.webContents.executeJavaScript("typeof window.atelier");
+      console.error(`[${label}] preload bridge: ${bridge}`);
+    } catch (error) { console.error(`[${label}] bridge check failed: ${error.message}`); }
+  });
 }
 const runGh = (args) => new Promise((resolve, reject) => {
   execFile("gh", args, { windowsHide: true }, (error, stdout, stderr) => {
@@ -123,6 +129,7 @@ async function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
+      additionalArguments: [`--atelier-edition=${BUILD_EDITION}`],
     },
   });
   mainWindow = window;
@@ -156,6 +163,7 @@ async function openPackStudioWindow() {
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
+      additionalArguments: [`--atelier-edition=${BUILD_EDITION}`],
     },
   });
   observeWindowLoad(window, "Pack Studio");
