@@ -1,7 +1,7 @@
 {
   "name": "anime-tag-prompt-builder",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "atelierEdition": "owner",
   "githubReleaseRepo": "Falafel0/prompt-atelier",
   "description": "Windows-first anime prompt and tag builder.",

@@ -22,7 +22,20 @@ function decodeAtelierFile(text, magic) {
   return JSON.parse(text.startsWith(magic) ? text.slice(magic.length) : text);
 }
 const RELEASE_OWNER = "Falafel0";
+let mainWindow = null;
 let packStudioWindow = null;
+function observeWindowLoad(window, label) {
+  if (process.env.PROMPT_ATELIER_DEBUG !== "1") return;
+  window.webContents.on("did-fail-load", (_, code, description, url) =>
+    console.error(`[${label}] failed to load ${url}: ${code} ${description}`),
+  );
+  window.webContents.on("render-process-gone", (_, details) =>
+    console.error(`[${label}] renderer exited: ${details.reason}`),
+  );
+  window.webContents.on("console-message", (_, level, message, line, sourceId) =>
+    console.error(`[${label}] renderer console ${level} at ${sourceId}:${line}: ${message}`),
+  );
+}
 const runGh = (args) => new Promise((resolve, reject) => {
   execFile("gh", args, { windowsHide: true }, (error, stdout, stderr) => {
     if (error) reject(new Error((stderr || error.message).trim()));
@@ -93,7 +106,12 @@ async function publishCoreDlc() {
     return { tag, url };
   } finally { try { fs.unlinkSync(file); } catch { /* temp cleanup only */ } }
 }
-function createWindow() {
+async function createWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    return true;
+  }
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -107,9 +125,20 @@ function createWindow() {
       contextIsolation: true,
     },
   });
-  if (process.env.VITE_DEV_SERVER_URL)
-    window.loadURL(process.env.VITE_DEV_SERVER_URL);
-  else window.loadFile(path.join(__dirname, "../dist/index.html"));
+  mainWindow = window;
+  window.once("closed", () => { mainWindow = null; });
+  observeWindowLoad(window, "Atelier");
+  try {
+    if (process.env.VITE_DEV_SERVER_URL)
+      await window.loadURL(process.env.VITE_DEV_SERVER_URL);
+    else await window.loadFile(path.join(__dirname, "../dist/index.html"));
+    if (!window.isDestroyed()) window.show();
+    return true;
+  } catch (error) {
+    if (!window.isDestroyed()) window.destroy();
+    mainWindow = null;
+    throw new Error(`Prompt Atelier could not be opened: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 async function openPackStudioWindow() {
   if (packStudioWindow && !packStudioWindow.isDestroyed()) {
@@ -129,6 +158,7 @@ async function openPackStudioWindow() {
       contextIsolation: true,
     },
   });
+  observeWindowLoad(window, "Pack Studio");
   packStudioWindow = window;
   window.once("closed", () => { packStudioWindow = null; });
   try {
@@ -496,13 +526,13 @@ app.whenReady().then(() => {
       })
       .finally(() => app.quit());
   } else if (process.argv.includes("--pack-studio")) void openPackStudioWindow();
-  else createWindow();
+  else void createWindow();
   app.on("activate", () => {
     if (
       !BrowserWindow.getAllWindows().length &&
       process.env.PROMPT_ATELIER_SYNC_DANBOORU !== "1"
     )
-      createWindow();
+      void createWindow();
   });
 });
 app.on("window-all-closed", () => {
