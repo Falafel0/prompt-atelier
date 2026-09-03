@@ -96,20 +96,35 @@ async function githubReleaseStatus() {
   return { owner: login === RELEASE_OWNER, login, repo: settings.repo, corePackId: settings.corePackId, enabled: !!settings.enabled };
 }
 async function publishCoreDlc() {
-  if (BUILD_EDITION !== "owner") throw new Error("GitHub publishing is available only in Prompt Atelier Owner.");
-  const status = await githubReleaseStatus(); const settings = releaseSettings();
-  if (!status.owner) throw new Error("Core DLC publishing is restricted to the configured owner account.");
-  if (!settings.enabled || !/^[\w.-]+\/[\w.-]+$/.test(settings.repo)) throw new Error("Set an enabled GitHub release repository in Global settings first.");
+  const settings = releaseSettings();
   const pack = database.listPacks().find((item) => item.id === settings.corePackId);
   if (!pack) throw new Error(`Installed pack “${settings.corePackId}” was not found.`);
-  const version = String(pack.version || "0.0.0").replace(/[^0-9A-Za-z._-]/g, "-"); const tag = `${settings.corePackId}-v${version}`;
-  const file = path.join(app.getPath("temp"), `${settings.corePackId}-${version}.atelier-dlc`);
-  fs.writeFileSync(file, encodeAtelierFile(DLC_MAGIC, database.exportPack(settings.corePackId)));
+  return publishDlcDraft(database.exportPack(settings.corePackId));
+}
+function validateDlcDraft(draft) {
+  try {
+    const pack = database.validatePack(draft);
+    return { valid: true, issues: [], summary: { id: pack.manifest.id, name: pack.manifest.name, version: pack.manifest.version, tags: pack.tags.length, relationships: pack.relationships.length } };
+  } catch (error) {
+    return { valid: false, issues: [error instanceof Error ? error.message : "Invalid DLC draft."], summary: null };
+  }
+}
+async function publishDlcDraft(draft) {
+  if (BUILD_EDITION !== "owner") throw new Error("DLC publishing is available only in Prompt Atelier Owner.");
+  const preflight = validateDlcDraft(draft);
+  if (!preflight.valid) throw new Error(preflight.issues[0]);
+  const status = await githubReleaseStatus(); const settings = releaseSettings();
+  if (!status.owner) throw new Error("DLC publishing is restricted to the configured owner account.");
+  if (!settings.enabled || !/^[\w.-]+\/[\w.-]+$/.test(settings.repo)) throw new Error("Set an enabled GitHub release repository in Global settings first.");
+  const { id, name, version } = preflight.summary;
+  const safeVersion = String(version || "0.0.0").replace(/[^0-9A-Za-z._-]/g, "-"); const tag = `${id}-v${safeVersion}`;
+  const file = path.join(app.getPath("temp"), `${id}-${safeVersion}.atelier-dlc`);
+  fs.writeFileSync(file, encodeAtelierFile(DLC_MAGIC, draft));
   try {
     let url;
-    try { url = await runGh(["release", "create", tag, file, "--repo", settings.repo, "--title", `${pack.name} ${version}`, "--notes", `Prompt Atelier Core DLC ${version}`]); }
+    try { url = await runGh(["release", "create", tag, file, "--repo", settings.repo, "--title", `${name} ${version}`, "--notes", `Prompt Atelier DLC ${id} ${version}`]); }
     catch (error) { await runGh(["release", "upload", tag, file, "--clobber", "--repo", settings.repo]); url = await runGh(["release", "view", tag, "--repo", settings.repo, "--json", "url", "--jq", ".url"]); }
-    return { tag, url };
+    return { tag, url, pack: id, version };
   } finally { try { fs.unlinkSync(file); } catch { /* temp cleanup only */ } }
 }
 async function createWindow() {
@@ -229,7 +244,7 @@ app.whenReady().then(() => {
     return;
   }
   ipcMain.handle("clipboard:write", (_, value) => clipboard.writeText(value));
-  ipcMain.handle("pack-studio:open", () => openPackStudioWindow());
+  if (BUILD_EDITION === "owner") ipcMain.handle("pack-studio:open", () => openPackStudioWindow());
   ipcMain.handle("pack-studio:export-draft", async (_, draft) => {
     const id = String(draft?.manifest?.id || "untitled-pack").replace(
       /[^a-z0-9_-]/gi,
@@ -524,6 +539,14 @@ app.whenReady().then(() => {
   if (BUILD_EDITION === "owner") {
     ipcMain.handle("github:release-status", () => githubReleaseStatus());
     ipcMain.handle("github:publish-core-dlc", () => publishCoreDlc());
+    ipcMain.handle("owner:validate-dlc-draft", (_, draft) => validateDlcDraft(draft));
+    ipcMain.handle("owner:publish-dlc-draft", (_, draft) => publishDlcDraft(draft));
+    ipcMain.handle("owner:install-dlc-draft", (_, draft) => {
+      const preflight = validateDlcDraft(draft);
+      if (!preflight.valid) throw new Error(preflight.issues[0]);
+      const existing = database.listPacks().some((pack) => pack.id === draft.manifest.id);
+      return database.installPack(draft, { replace: existing });
+    });
   }
   if (process.env.PROMPT_ATELIER_SYNC_DANBOORU === "1") {
     runDanbooruCore((data) => process.stdout.write(`${JSON.stringify(data)}\n`))

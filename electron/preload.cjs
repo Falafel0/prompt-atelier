@@ -6,10 +6,11 @@ contextBridge.exposeInMainWorld("atelier", {
   copy: (value) => ipcRenderer.invoke("clipboard:write", value),
   bootstrap: (pack, tags, rels) =>
     ipcRenderer.invoke("db:bootstrap", pack, tags, rels),
-  openPackStudio: () => ipcRenderer.invoke("pack-studio:open"),
-  exportDraftPack: (draft) =>
-    ipcRenderer.invoke("pack-studio:export-draft", draft),
-  openDraftPack: () => ipcRenderer.invoke("pack-studio:open-draft"),
+  ...(isOwnerEdition ? {
+    openPackStudio: () => ipcRenderer.invoke("pack-studio:open"),
+    exportDraftPack: (draft) => ipcRenderer.invoke("pack-studio:export-draft", draft),
+    openDraftPack: () => ipcRenderer.invoke("pack-studio:open-draft"),
+  } : {}),
   openExternal: (url) => ipcRenderer.invoke("shell:open-external", url),
   downloadSourceAsset: (url, name) =>
     ipcRenderer.invoke("source:download", url, name),
@@ -63,5 +64,8 @@ contextBridge.exposeInMainWorld("atelier", {
   ...(isOwnerEdition ? {
     githubReleaseStatus: () => ipcRenderer.invoke("github:release-status"),
     publishCoreDlc: () => ipcRenderer.invoke("github:publish-core-dlc"),
+    validateDlcDraft: (draft) => ipcRenderer.invoke("owner:validate-dlc-draft", draft),
+    publishDlcDraft: (draft) => ipcRenderer.invoke("owner:publish-dlc-draft", draft),
+    installDlcDraft: (draft) => ipcRenderer.invoke("owner:install-dlc-draft", draft),
   } : {}),
 });

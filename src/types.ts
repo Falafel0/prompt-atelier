@@ -184,9 +184,9 @@ declare global {
       installPackUpdate(id: string): Promise<ImportResult>;
       importPack(): Promise<ImportResult | null>;
       exportPack(id: string): Promise<boolean>;
-      openPackStudio(): Promise<boolean>;
-      exportDraftPack(value: unknown): Promise<boolean>;
-      openDraftPack(): Promise<unknown | null>;
+      openPackStudio?(): Promise<boolean>;
+      exportDraftPack?(value: unknown): Promise<boolean>;
+      openDraftPack?(): Promise<unknown | null>;
       openExternal(url: string): Promise<void>;
       downloadSourceAsset(url: string, name: string): Promise<boolean>;
       embedSourceAsset(url: string): Promise<string>;
@@ -242,6 +242,9 @@ declare global {
         enabled: boolean;
       }>;
       publishCoreDlc?(): Promise<{ tag: string; url: string }>;
+      validateDlcDraft?(value: unknown): Promise<{ valid: boolean; issues: string[]; summary: { id: string; name: string; version: string; tags: number; relationships: number } | null }>;
+      publishDlcDraft?(value: unknown): Promise<{ tag: string; url: string; pack: string; version: string }>;
+      installDlcDraft?(value: unknown): Promise<ImportResult>;
     };
   }
 }

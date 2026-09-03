@@ -24,6 +24,7 @@ import "./responsive.css";
 import "./packStudioResponsive.css";
 import "./studioExtras.css";
 import "./parameter-controls.css";
+import "./studioOwner.css";
 
 type DraftTag = {
   id: string;
@@ -142,6 +143,7 @@ function Studio() {
     preview: "",
   });
   const [status, setStatus] = useState("");
+  const [ownerAction, setOwnerAction] = useState<"validate" | "install" | "publish" | null>(null);
   const [tagFilter, setTagFilter] = useState("");
   const [dependenciesText, setDependenciesText] = useState("");
   const [conflictsText, setConflictsText] = useState("");
@@ -471,10 +473,41 @@ function Studio() {
       setStatus(error instanceof Error ? error.message : "Unable to export this pack.");
     }
   };
+  const validateOwnerDraft = async () => {
+    if (validation.length) { setStatus(validation[0]); return false; }
+    setOwnerAction("validate");
+    try {
+      const result = await window.atelier?.validateDlcDraft?.(draft);
+      if (!result) throw new Error("Owner validation is unavailable in this build.");
+      setStatus(result.valid ? `Release check passed: ${result.summary?.tags ?? 0} tags · ${result.summary?.relationships ?? 0} rules.` : result.issues[0]);
+      return result.valid;
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Unable to validate DLC."); return false; }
+    finally { setOwnerAction(null); }
+  };
+  const installOwnerDraft = async () => {
+    if (!(await validateOwnerDraft())) return;
+    setOwnerAction("install");
+    try {
+      const result = await window.atelier?.installDlcDraft?.(draft);
+      if (!result) throw new Error("Owner installation is unavailable in this build.");
+      setStatus(`Installed locally: ${result.added} tags. Existing DLC with the same ID was replaced.`);
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Unable to install this DLC locally."); }
+    finally { setOwnerAction(null); }
+  };
+  const publishOwnerDraft = async () => {
+    if (!(await validateOwnerDraft())) return;
+    setOwnerAction("publish");
+    try {
+      const result = await window.atelier?.publishDlcDraft?.(draft);
+      if (!result) throw new Error("Owner publishing is unavailable in this build.");
+      setStatus(`Published ${result.pack} ${result.version}: ${result.url}`);
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Unable to publish this DLC."); }
+    finally { setOwnerAction(null); }
+  };
   const openDraft = async () => {
     let value: unknown;
     try {
-      value = await window.atelier?.openDraftPack();
+      value = await window.atelier?.openDraftPack?.();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to open this DLC.");
       return;
@@ -1040,6 +1073,15 @@ function Studio() {
         <button className="ghost" onClick={exportDraft}>
           <Download size={15} /> Export .atelier-dlc
         </button>
+        {isOwnerEdition && <button className="ghost" disabled={!!validation.length || !!ownerAction} onClick={validateOwnerDraft} title="Run the same validation used before local installation and publishing">
+          {ownerAction === "validate" ? "Checking…" : "Preflight"}
+        </button>}
+        {isOwnerEdition && <button className="ghost" disabled={!!validation.length || !!ownerAction} onClick={installOwnerDraft} title="Install or replace this DLC locally for testing">
+          {ownerAction === "install" ? "Installing…" : "Install locally"}
+        </button>}
+        {isOwnerEdition && <button className="ghost secondary studio-publish-button" disabled={!!validation.length || !!ownerAction} onClick={publishOwnerDraft} title="Validate and publish this exact DLC to the configured GitHub release repository">
+          <ExternalLink size={15} /> {ownerAction === "publish" ? "Publishing DLC…" : "PUBLISH DLC"}
+        </button>}
         <button className="ghost" onClick={openDraft}>
           Open .atelier-dlc
         </button>
@@ -1131,7 +1173,7 @@ function Studio() {
               className={authorTab === "sprite" ? "active" : ""}
               onClick={() => setAuthorTab("sprite")}
             >
-              Sprite layer
+              Preview slots
             </button>
             <button
               className={authorTab === "explorer" ? "active" : ""}
@@ -1215,29 +1257,29 @@ function Studio() {
             <section className="sprite-workbench">
               <header>
                 <div>
-                  <small>SPRITE COMPOSER · {tag.name || "UNNAMED TAG"}</small>
-                  <h2>Build the visual layer stack</h2>
-                  <p>Import a transparent asset, choose its visual role, then verify it against the body guide. Everything is embedded in the exported DLC.</p>
+                  <small>PREVIEW INVENTORY · {tag.name || "UNNAMED TAG"}</small>
+                  <h2>Place a preview in an inventory slot</h2>
+                  <p>Attach a transparent preview to the tag, choose the inventory slot it represents, then check its fit. The asset stays embedded in this DLC.</p>
                 </div>
                 <div className="sprite-header-actions"><button disabled={!tag.sprite?.image} onClick={saveSpriteLayer}>Finish layer</button><button className="replace" onClick={embedSprite}><Image size={14} /> Import transparent asset</button></div>
               </header>
-              <ol className="sprite-steps"><li className={tag.sprite?.image ? "done" : "active"}><b>1</b><span>Import<small>PNG or WebP</small></span></li><li className={tag.sprite?.image ? "active" : ""}><b>2</b><span>Assign role<small>slot and draw order</small></span></li><li className={tag.sprite?.image ? "active" : ""}><b>3</b><span>Check fit<small>anchor and nudges</small></span></li></ol>
+              <ol className="sprite-steps"><li className={tag.sprite?.image ? "done" : "active"}><b>1</b><span>Add preview<small>PNG or WebP</small></span></li><li className={tag.sprite?.image ? "active" : ""}><b>2</b><span>Choose slot<small>inventory placement</small></span></li><li className={tag.sprite?.image ? "active" : ""}><b>3</b><span>Check fit<small>anchor and nudges</small></span></li></ol>
               <div className="sprite-editor-grid">
                 <div className="sprite-stage-wrap">
                   <div className="sprite-stage-toolbar"><span>FRONT · 2048 × 2048</span><button onClick={resetSpritePlacement} disabled={!tag.sprite?.image}>Reset to slot</button><button onClick={discardCurrentSprite} disabled={!tag.sprite?.image}>Discard</button></div>
                   <div className="sprite-stage" aria-label="Sprite placement preview">
                     <img className="sprite-body-guide" src={dollSilhouette} alt="Body alignment guide" />
                     <div className="sprite-stage-guides"><span>HEAD</span><span>TORSO</span><span>WAIST</span><span>FEET</span></div>
-                    {tag.sprite?.image ? <img className="sprite-current" src={tag.sprite.image} alt="Current sprite" style={{ left: `${50 + tag.sprite.x}%`, top: `${50 + tag.sprite.y}%`, transform: `translate(-50%, -50%) scale(${tag.sprite.scale})`, opacity: tag.sprite.opacity, mixBlendMode: tag.sprite.blend }} /> : <button className="sprite-stage-empty" onClick={embedSprite}><Image size={17} /><b>Import a transparent layer</b><small>Full 2048 × 2048 canvas · PNG/WebP</small></button>}
+                    {tag.sprite?.image ? <img className="sprite-current" src={tag.sprite.image} alt="Current preview" style={{ left: `${50 + tag.sprite.x}%`, top: `${50 + tag.sprite.y}%`, transform: `translate(-50%, -50%) scale(${tag.sprite.scale})`, opacity: tag.sprite.opacity, mixBlendMode: tag.sprite.blend }} /> : <button className="sprite-stage-empty" onClick={embedSprite}><Image size={17} /><b>Add a transparent preview</b><small>Full 2048 × 2048 canvas · PNG/WebP</small></button>}
                   </div>
                   <div className="sprite-nudge"><span>Fine nudge</span><button disabled={!tag.sprite?.image} onClick={() => updateSprite({ y: (tag.sprite?.y ?? 0) - 1 })}>↑</button><button disabled={!tag.sprite?.image} onClick={() => updateSprite({ x: (tag.sprite?.x ?? 0) - 1 })}>←</button><button disabled={!tag.sprite?.image} onClick={() => updateSprite({ y: (tag.sprite?.y ?? 0) + 1 })}>↓</button><button disabled={!tag.sprite?.image} onClick={() => updateSprite({ x: (tag.sprite?.x ?? 0) + 1 })}>→</button></div>
                 </div>
                 <div className="sprite-controls">
-                  <section className="sprite-slot-picker"><div><small>2 · ROLE</small><b>Where does this part belong?</b></div><div className="sprite-slot-grid">{(Object.keys(SPRITE_SLOT_PRESETS) as SpriteLayer["slot"][]).map((slot) => <button key={slot} className={(tag.sprite?.slot ?? "") === slot ? "active" : ""} onClick={() => applySpritePreset(slot)}><b>{slot.replace("-", " ")}</b><small>layer {SPRITE_SLOT_PRESETS[slot].layer}</small></button>)}</div></section>
+                  <section className="sprite-slot-picker"><div><small>2 · INVENTORY SLOT</small><b>Where should this preview appear?</b></div><div className="sprite-slot-grid">{(Object.keys(SPRITE_SLOT_PRESETS) as SpriteLayer["slot"][]).map((slot) => <button key={slot} className={(tag.sprite?.slot ?? "") === slot ? "active" : ""} onClick={() => applySpritePreset(slot)}><b>{slot.replace("-", " ")}</b><small>display order {SPRITE_SLOT_PRESETS[slot].layer}</small></button>)}</div></section>
                   <section className="sprite-placement-controls"><div><small>3 · PLACEMENT</small><b>Fine-tune only after using the correct master canvas</b></div><div className="sprite-selects"><label>Anchor<select value={tag.sprite?.anchor ?? "canvas"} onChange={(event) => updateSprite({ anchor: event.target.value as SpriteLayer["anchor"] })}>{["canvas", "head", "torso", "waist", "feet", "left-hand", "right-hand"].map((value) => <option key={value}>{value}</option>)}</select></label><label>View<select value={tag.sprite?.view ?? "front"} onChange={(event) => updateSprite({ view: event.target.value as SpriteLayer["view"] })}><option value="front">Front</option><option value="back">Back</option><option value="side">Side</option></select></label><label>Coverage<select value={tag.sprite?.coverage ?? "none"} onChange={(event) => updateSprite({ coverage: event.target.value as SpriteLayer["coverage"] })}>{["none", "torso", "legs", "full-body"].map((value) => <option key={value}>{value}</option>)}</select></label><label>Blend<select value={tag.sprite?.blend ?? "normal"} onChange={(event) => updateSprite({ blend: event.target.value as SpriteLayer["blend"] })}>{["normal", "multiply", "screen", "overlay"].map((value) => <option key={value}>{value}</option>)}</select></label></div><div className="sprite-order"><label>Draw order<input type="number" value={tag.sprite?.layer ?? 50} onChange={(event) => updateSprite({ layer: Number(event.target.value) })} /></label><small>Higher numbers draw on top. Slot presets choose a safe starting position.</small></div><ParameterSlider label="Horizontal adjustment" value={tag.sprite?.x ?? 0} min={-12} max={12} step={1} onChange={(x) => updateSprite({ x })} reset={() => updateSprite({ x: 0 })} /><ParameterSlider label="Vertical adjustment" value={tag.sprite?.y ?? 0} min={-12} max={12} step={1} onChange={(y) => updateSprite({ y })} reset={() => updateSprite({ y: 0 })} /><ParameterSlider label="Scale" value={tag.sprite?.scale ?? 1} min={0.8} max={1.2} step={0.01} onChange={(scale) => updateSprite({ scale })} reset={() => updateSprite({ scale: 1 })} /><ParameterSlider label="Opacity" value={tag.sprite?.opacity ?? 1} min={0} max={1} step={0.05} onChange={(opacity) => updateSprite({ opacity })} reset={() => updateSprite({ opacity: 1 })} /></section>
                 </div>
               </div>
-              <div className="sprite-stack"><div><small>TAG LAYER STACK</small><b>{(tag.sprites?.length ?? 0) + Number(!!tag.sprite?.image)} layer(s)</b></div>{tag.sprite?.image && <article className="current"><span>Editing</span><b>{tag.sprite.slot}</b><em>layer {tag.sprite.layer} · {tag.sprite.anchor}</em></article>}{(tag.sprites ?? []).map((layer, index) => <article key={`${layer.slot}-${layer.layer}-${index}`}><button className="sprite-layer-edit" onClick={() => editSpriteLayer(index)}><span>{layer.slot}</span><b>Layer {layer.layer}</b><em>{layer.anchor} · {layer.view}</em></button><button className="sprite-layer-remove" onClick={() => removeSpriteLayer(index)}>×</button></article>)}{!(tag.sprites?.length || tag.sprite?.image) && <p>No visual layers yet. This tag will still work in prompts.</p>}</div>
+              <div className="sprite-stack"><div><small>TAG PREVIEW INVENTORY</small><b>{(tag.sprites?.length ?? 0) + Number(!!tag.sprite?.image)} preview(s)</b></div>{tag.sprite?.image && <article className="current"><span>Editing</span><b>{tag.sprite.slot}</b><em>order {tag.sprite.layer} · {tag.sprite.anchor}</em></article>}{(tag.sprites ?? []).map((layer, index) => <article key={`${layer.slot}-${layer.layer}-${index}`}><button className="sprite-layer-edit" onClick={() => editSpriteLayer(index)}><span>{layer.slot}</span><b>Preview {index + 1}</b><em>{layer.anchor} · {layer.view}</em></button><button className="sprite-layer-remove" onClick={() => removeSpriteLayer(index)}>×</button></article>)}{!(tag.sprites?.length || tag.sprite?.image) && <p>No preview yet. This tag will still work in prompts.</p>}</div>
               <p className="sprite-note">The master canvas is the alignment system. Use adjustment only for a tiny correction; redraw a misaligned asset on 2048 × 2048 instead.</p>
             </section>
           )}

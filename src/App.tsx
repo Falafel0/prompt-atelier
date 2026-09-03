@@ -20,6 +20,7 @@ import {
 import { formatPrompt, type PromptFormat, type PromptFormatOptions } from "./prompt";
 import { analyzePromptText, type ArtistDirective } from "./promptAnalysis";
 import "./promptIde.css";
+import "./promptIdeDock.css";
 import { useStore } from "./store";
 import {
   ParameterCheckbox,
@@ -519,7 +520,7 @@ export default function App() {
   };
   const openPackStudio = async () => {
     try {
-      const opened = await window.atelier?.openPackStudio();
+      const opened = await window.atelier?.openPackStudio?.();
       if (!opened) throw new Error("Pack Studio is unavailable in this application build.");
       notify("Pack Studio opened");
     } catch (error) { notify(error instanceof Error ? error.message : "Unable to open Pack Studio"); }
@@ -730,7 +731,7 @@ export default function App() {
     notify(`${additions.length} recognized tags added`);
   };
   return (
-    <main className="app-shell">
+    <main className="app-shell" style={{ gridTemplateRows: "58px minmax(0, 1fr) 226px" }}>
       <header>
         <div className="brand">
           <Sparkles size={17} />
@@ -744,9 +745,6 @@ export default function App() {
           <button onClick={() => setSettingsOpen(true)} title="Global interface settings">
             <SlidersHorizontal size={15} /> Settings
           </button>
-          <button onClick={() => setPromptOpen(true)}>
-            <Clipboard size={15} /> Prompt editor
-          </button>
           <button
             onClick={() => {
               setPacksOpen(!packsOpen);
@@ -755,9 +753,9 @@ export default function App() {
           >
             <Package size={15} /> Packs
           </button>
-          <button onClick={openPackStudio}>
+          {isOwnerEdition && <button onClick={openPackStudio}>
             <Package size={15} /> Pack Studio
-          </button>
+          </button>}
           {isOwnerEdition && githubOwner && githubReleaseSettings.enabled && <button className="owner-release" onClick={publishCoreDlc} title={`Publish ${githubReleaseSettings.corePackId} to ${githubReleaseSettings.repo}`}>
             <Package size={15} /> Publish Core DLC
           </button>}
@@ -1175,17 +1173,17 @@ export default function App() {
             </article>
           ))}
           {!packs.length && (
-            <p>No DLC packs installed. Open Pack Studio to create one.</p>
+            <p>{isOwnerEdition ? "No DLC packs installed. Open Pack Studio to create one." : "No DLC packs installed. Import a .atelier-dlc to start."}</p>
           )}
             <button className="import-pack" onClick={importPack}>
               <FolderUp size={14} /> Import .atelier-dlc
             </button>
-            <button
+            {isOwnerEdition && <button
               className="open-studio"
               onClick={openPackStudio}
             >
               <Package size={14} /> Open Pack Studio
-            </button>
+            </button>}
           </section>
         </div>
       )}
@@ -1290,7 +1288,7 @@ export default function App() {
 function CredentialFields({ title, identityLabel, identity, apiKey, onIdentity, onKey }: { title: string; identityLabel: string; identity: string; apiKey: string; onIdentity(value: string): void; onKey(value: string): void }) {
   return <fieldset className="credential-fields"><legend>{title}</legend><label>{identityLabel}<input value={identity} autoComplete="off" onChange={(event) => onIdentity(event.target.value)} /></label><label>API key<input type="password" value={apiKey} autoComplete="off" placeholder="Optional API key" onChange={(event) => onKey(event.target.value)} /></label></fieldset>;
 }
-function PromptTextBox({ value, generated, onChange, tags, analysis, contextualIds, selected, relations, onOpenFormat, onBatchDefaultWeights }: { value: string; generated: boolean; onChange(value: string): void; tags: Tag[]; analysis: { sentences: string[]; recognized: Tag[]; unknown: string[]; weights: Record<string, number>; }; contextualIds: Set<string>; selected: import("./types").SelectedTag[]; relations: import("./types").TagRelationship[]; onOpenFormat(): void; onBatchDefaultWeights(): void }) {
+function PromptTextBox({ value, generated, onChange, tags, analysis, contextualIds, selected, relations, onOpenFormat, onBatchDefaultWeights }: { value: string; generated: boolean; onChange(value: string): void; tags: Tag[]; analysis: { sentences: string[]; recognized: Tag[]; unknown: string[]; weights: Record<string, number>; artistDirectives: ArtistDirective[]; }; contextualIds: Set<string>; selected: import("./types").SelectedTag[]; relations: import("./types").TagRelationship[]; onOpenFormat(): void; onBatchDefaultWeights(): void }) {
   const [scrollTop, setScrollTop] = useState(0); const [caret, setCaret] = useState(0); const [suggestionIndex, setSuggestionIndex] = useState(0); const [palette, setPalette] = useState(false); const [minimap, setMinimap] = useState(true); const textareaRef = useRef<HTMLTextAreaElement>(null);
   const known = useMemo(() => new Map(tags.flatMap((tag) => [tag.name, tag.displayName ?? "", ...(tag.aliases ?? [])].filter(Boolean).map((name) => [name.toLowerCase().replaceAll("-", "_"), tag] as const))), [tags]);
   const lines = value.split("\n"); const beforeCaret = value.slice(0, caret); const token = (beforeCaret.match(/[\w-]+(?:_[\w-]+)*$/)?.[0] ?? "").toLowerCase().replaceAll("-", "_");
@@ -1300,7 +1298,16 @@ function PromptTextBox({ value, generated, onChange, tags, analysis, contextualI
   const normalize = () => onChange(value.split(/[\n,]+/).map((part) => part.trim().replace(/\s+/g, " ")).filter(Boolean).join(", "));
   const removeDuplicates = () => { const seen = new Set<string>(); onChange(value.split(/,\s*/).filter((part) => { const key = part.trim().toLowerCase(); if (!key || seen.has(key)) return false; seen.add(key); return true; }).join(", ")); };
   const runPalette = (command: string) => { if (command === "Format canonical prompt") normalize(); if (command === "Remove duplicate tags") removeDuplicates(); if (command === "Open formatting") onOpenFormat(); if (command === "Toggle minimap") setMinimap((current) => !current); if (command === "Reset selected tag weights") onBatchDefaultWeights(); if (command.startsWith("Insert ")) { const snippet = command === "Insert character snippet" ? "{character}" : command === "Insert wardrobe snippet" ? "{wardrobe}" : "{scene}"; onChange(`${value}${value.trim() ? ", " : ""}${snippet}`); } setPalette(false); };
-  return <div className="prompt-ide"><div className="prompt-ide-gutter" aria-hidden="true">{lines.map((_, index) => <span key={index}>{index + 1}</span>)}</div><pre className="prompt-ide-highlight" aria-hidden="true" style={{ transform: `translateY(${-scrollTop}px)` }}>{lines.map((line, lineIndex) => <span key={lineIndex} className="prompt-ide-line">{line.split(/(\([^)]*?\)|[\w-]+(?:_[\w-]+)*)/g).map((part, index) => { const normalized = part.replace(/^\((.+?):[\d.]+\)$/, "$1").replaceAll("-", "_").toLowerCase(); const tag = known.get(normalized); const weighted = /^\(.+?:[\d.]+\)$/.test(part); const category = tag?.category.toLowerCase().replace(/[^a-z0-9]+/g, "-"); return <span key={index} className={["prompt-token", weighted && "weight", tag && "known", category && `category-${category}`, tag && contextualIds.has(tag.id) && "contextual"].filter(Boolean).join(" ")}>{part}</span>; })}{"\n"}</span>)}</pre><textarea ref={textareaRef} aria-label="Prompt workspace" spellCheck={false} value={value} placeholder="Paste or write a complete prompt…" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)} onClick={(event) => setCaret(event.currentTarget.selectionStart)} onKeyUp={(event) => setCaret(event.currentTarget.selectionStart)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "p") { event.preventDefault(); setPalette(true); } else if (suggestions.length && (event.key === "Tab" || event.key === "Enter")) { event.preventDefault(); insertSuggestion(suggestions[suggestionIndex] ?? suggestions[0]); } else if (suggestions.length && event.key === "ArrowDown") { event.preventDefault(); setSuggestionIndex((current) => Math.min(current + 1, suggestions.length - 1)); } else if (suggestions.length && event.key === "ArrowUp") { event.preventDefault(); setSuggestionIndex((current) => Math.max(current - 1, 0)); } }} onChange={(event) => { setCaret(event.currentTarget.selectionStart); setSuggestionIndex(0); onChange(event.target.value); }} />{suggestions.length > 0 && <div className="prompt-autocomplete">{suggestions.map((tag, index) => <button key={tag.id} className={index === suggestionIndex ? "active" : ""} onMouseDown={(event) => { event.preventDefault(); insertSuggestion(tag); }}><b>{tag.name}</b><small>{tag.category} › {tag.subcategory}</small><kbd>{index === suggestionIndex ? "Tab" : ""}</kbd></button>)}</div>}{diagnostics.length > 0 && <div className="prompt-diagnostics">{diagnostics.map((diagnostic) => <div key={diagnostic.key}><span>⚠ {diagnostic.text}</span>{diagnostic.fix && <button onClick={diagnostic.fix}>Fix</button>}</div>)}</div>}{minimap && <div className="prompt-minimap" aria-label="Prompt minimap">{lines.map((line, index) => <i key={index} className={line.includes("_") ? "known" : ""} />)}</div>}{palette && <div className="prompt-palette" role="dialog"><b>COMMAND PALETTE</b>{["Format canonical prompt", "Remove duplicate tags", "Reset selected tag weights", "Open formatting", "Toggle minimap", "Insert character snippet", "Insert wardrobe snippet", "Insert scene snippet"].map((command) => <button key={command} onClick={() => runPalette(command)}>{command}</button>)}</div>}<div className="prompt-ide-status"><span>{generated ? "GENERATED · EDIT TO OVERRIDE" : "EDITING · TWO-WAY SYNC"}</span><span>{analysis.recognized.length} known · {analysis.sentences.length} sentence{analysis.sentences.length === 1 ? "" : "s"} · {analysis.unknown.length} unresolved · Ctrl+Shift+P</span></div></div>;
+  const renderToken = (part: string, index: number) => {
+    const normalized = part.replace(/^\((.+?):[\d.]+\)$/, "$1").replaceAll("-", "_").toLowerCase();
+    const tag = known.get(normalized);
+    const weighted = /^\(.+?:[\d.]+\)$/.test(part);
+    const artistDirective = /^@\[[^\]]+\]$|^@[\w-]+(?:\s*\([^)]*\))?$/.test(part);
+    const botDirective = part === "#=@" || part.startsWith("#");
+    const category = tag?.category.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    return <span key={index} className={["prompt-token", weighted && "weight", artistDirective && "artist-directive", botDirective && "bot-directive", tag && "known", category && `category-${category}`, tag && contextualIds.has(tag.id) && "contextual"].filter(Boolean).join(" ")}>{part}</span>;
+  };
+  return <div className="prompt-ide"><div className="prompt-ide-gutter" aria-hidden="true">{lines.map((_, index) => <span key={index}>{index + 1}</span>)}</div><pre className="prompt-ide-highlight" aria-hidden="true" style={{ transform: `translateY(${-scrollTop}px)` }}>{lines.map((line, lineIndex) => <span key={lineIndex} className="prompt-ide-line">{line.split(/(@\[[^\]]+\]|@[\w-]+(?:\s*\([^)]*\))?|#=@|#[^,;\n]+|\([^)]*?\)|[\w-]+(?:_[\w-]+)*)/g).map(renderToken)}{"\n"}</span>)}</pre><textarea ref={textareaRef} aria-label="Prompt workspace" spellCheck={false} value={value} placeholder="Paste or write a complete prompt…" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)} onClick={(event) => setCaret(event.currentTarget.selectionStart)} onKeyUp={(event) => setCaret(event.currentTarget.selectionStart)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "p") { event.preventDefault(); setPalette(true); } else if (suggestions.length && (event.key === "Tab" || event.key === "Enter")) { event.preventDefault(); insertSuggestion(suggestions[suggestionIndex] ?? suggestions[0]); } else if (suggestions.length && event.key === "ArrowDown") { event.preventDefault(); setSuggestionIndex((current) => Math.min(current + 1, suggestions.length - 1)); } else if (suggestions.length && event.key === "ArrowUp") { event.preventDefault(); setSuggestionIndex((current) => Math.max(current - 1, 0)); } }} onChange={(event) => { setCaret(event.currentTarget.selectionStart); setSuggestionIndex(0); onChange(event.target.value); }} />{suggestions.length > 0 && <div className="prompt-autocomplete">{suggestions.map((tag, index) => <button key={tag.id} className={index === suggestionIndex ? "active" : ""} onMouseDown={(event) => { event.preventDefault(); insertSuggestion(tag); }}><b>{tag.name}</b><small>{tag.category} › {tag.subcategory}</small><kbd>{index === suggestionIndex ? "Tab" : ""}</kbd></button>)}</div>}{diagnostics.length > 0 && <div className="prompt-diagnostics">{diagnostics.map((diagnostic) => <div key={diagnostic.key}><span>⚠ {diagnostic.text}</span>{diagnostic.fix && <button onClick={diagnostic.fix}>Fix</button>}</div>)}</div>}{minimap && <div className="prompt-minimap" aria-label="Prompt minimap">{lines.map((line, index) => <i key={index} className={line.includes("_") ? "known" : ""} />)}</div>}{palette && <div className="prompt-palette" role="dialog"><b>COMMAND PALETTE</b>{["Format canonical prompt", "Remove duplicate tags", "Reset selected tag weights", "Open formatting", "Toggle minimap", "Insert character snippet", "Insert wardrobe snippet", "Insert scene snippet"].map((command) => <button key={command} onClick={() => runPalette(command)}>{command}</button>)}</div>}<div className="prompt-ide-status"><span>{generated ? "GENERATED · EDIT TO OVERRIDE" : "EDITING · TWO-WAY SYNC"}</span><span>{analysis.recognized.length} known · {analysis.sentences.length} sentence{analysis.sentences.length === 1 ? "" : "s"} · {analysis.unknown.length} unresolved · {analysis.artistDirectives.length} directive{analysis.artistDirectives.length === 1 ? "" : "s"} · Ctrl+Shift+P</span></div></div>;
 }
 function MacroTagGrid({ macros, kind, onInsert, onLoad }: {
   macros: (import("./types").CharacterSnapshot & { id: string; updatedAt: string; thumbnail?: string })[];
